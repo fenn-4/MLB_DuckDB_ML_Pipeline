@@ -5,6 +5,26 @@ from datetime import datetime, timedelta
 from io import StringIO
 import time
 
+# Columns to keep from the API data before inserting into the database
+# These columns match exactly with schema.sql
+KEEP_COLUMNS = [
+    'game_pk', 'game_date', 'pitch_type', 'release_speed', 'release_pos_x', 'release_pos_z',
+    'batter', 'pitcher', 'events', 'description', 'zone', 'stand', 'p_throws',
+    'home_team', 'away_team', 'hit_location', 'bb_type', 'balls', 'strikes',
+    'game_year', 'pfx_x', 'pfx_z', 'plate_x', 'plate_z', 'outs_when_up', 'inning',
+    'inning_topbot', 'hc_x', 'hc_y', 'vx0', 'vy0', 'vz0', 'ax', 'ay', 'az',
+    'sz_top', 'sz_bot', 'hit_distance_sc', 'launch_speed', 'launch_angle',
+    'effective_speed', 'release_spin_rate', 'release_extension', 'release_pos_y',
+    'estimated_ba_using_speedangle', 'estimated_woba_using_speedangle',
+    'estimated_slg_using_speedangle', 'pitch_name', 'post_away_score',
+    'post_home_score', 'if_fielding_alignment', 'of_fielding_alignment',
+    'spin_axis', 'delta_home_win_exp', 'delta_run_exp', 'bat_speed',
+    'swing_length', 'home_win_exp', 'api_break_z_with_gravity',
+    'api_break_x_batter_in', 'arm_angle', 'attack_angle', 'attack_direction',
+    'swing_path_tilt', 'intercept_ball_minus_batter_pos_x_inches',
+    'intercept_ball_minus_batter_pos_y_inches'
+]
+
 # Season date ranges
 SEASON_RANGES = {
     2022: {'start': '2022-04-07', 'end': '2022-10-05'},
@@ -12,6 +32,26 @@ SEASON_RANGES = {
     2024: {'start': '2024-03-28', 'end': '2024-09-29'},
     2025: {'start': '2025-03-27', 'end': '2025-09-28'}
 }
+
+def get_player_data(player_type):
+    """Fetches player data for a given player type (pitcher or batter).
+
+    Args:
+        player_type (str): Either 'pitcher' or 'batter'
+
+    Returns:
+        pandas.DataFrame: The fetched data, or None if the request fails.
+    """
+    url = f"https://baseballsavant.mlb.com/statcast_search/csv?all=true&hfPT=&hfAB=&hfGT=R%7C&hfPR=&hfZ=&hfStadium=&hfBBL=&hfNewZones=&hfPull=&hfC=&hfSea=2025%7C2024%7C2023%7C2022%7C&hfSit=&player_type={player_type}&hfOuts=&hfOpponent=&pitcher_throws=&batter_stands=&hfSA=&game_date_gt=&game_date_lt=&hfMo=&hfTeam=&home_road=&hfRO=&position=&hfInfield=&hfOutfield=&hfInn=&hfBBT=&hfFlag=&metric_1=&group_by=name&min_pitches=0&min_results=0&min_pas=0&sort_col=pitches&player_event_sort=api_p_release_speed&sort_order=desc&minors=false"
+    try:
+        response = requests.get(url)
+        if response.status_code == 200:
+            df = pd.read_csv(StringIO(response.text))
+            # Keep only player_id and player_name columns
+            return df[['player_id', 'player_name']].drop_duplicates()
+        return None
+    except:
+        return None
 
 def get_statcast_data(date):
     """Fetches Statcast data for a given date from the MLB API.
@@ -33,15 +73,26 @@ def get_statcast_data(date):
         return None
 
 def create_database():
-    """Creates the DuckDB database and table if they don't exist.
+    """Creates the DuckDB database and tables if they don't exist.
 
     Returns:
         duckdb.DuckDBPyConnection: The database connection.
     """
     conn = duckdb.connect('mlb_statcast.db')
+    
+    # Read and execute schema from file
+    with open('schema.sql', 'r') as f:
+        schema = f.read()
+        conn.execute(schema)
+    
+    # Create players table if it doesn't exist
     conn.execute("""
-        CREATE TABLE IF NOT EXISTS statcast_data AS SELECT * FROM (SELECT * FROM (SELECT NULL AS pitch_type, NULL AS game_date, NULL AS release_speed, NULL AS release_pos_x, NULL AS release_pos_z, NULL AS player_name, NULL AS batter, NULL AS pitcher, NULL AS events, NULL AS description, NULL AS spin_dir, NULL AS spin_rate_deprecated, NULL AS break_angle_deprecated, NULL AS break_length_deprecated, NULL AS zone, NULL AS des, NULL AS game_type, NULL AS stand, NULL AS p_throws, NULL AS home_team, NULL AS away_team, NULL AS type, NULL AS hit_location, NULL AS bb_type, NULL AS balls, NULL AS strikes, NULL AS game_year, NULL AS pfx_x, NULL AS pfx_z, NULL AS plate_x, NULL AS plate_z, NULL AS on_3b, NULL AS on_2b, NULL AS on_1b, NULL AS outs_when_up, NULL AS inning, NULL AS inning_topbot, NULL AS hc_x, NULL AS hc_y, NULL AS tfs_deprecated, NULL AS tfs_zulu_deprecated, NULL AS umpire, NULL AS sv_id, NULL AS vx0, NULL AS vy0, NULL AS vz0, NULL AS ax, NULL AS ay, NULL AS az, NULL AS sz_top, NULL AS sz_bot, NULL AS hit_distance_sc, NULL AS launch_speed, NULL AS launch_angle, NULL AS effective_speed, NULL AS release_spin_rate, NULL AS release_extension, NULL AS game_pk, NULL AS fielder_2, NULL AS fielder_3, NULL AS fielder_4, NULL AS fielder_5, NULL AS fielder_6, NULL AS fielder_7, NULL AS fielder_8, NULL AS fielder_9, NULL AS release_pos_y, NULL AS estimated_ba_using_speedangle, NULL AS estimated_woba_using_speedangle, NULL AS woba_value, NULL AS woba_denom, NULL AS babip_value, NULL AS iso_value, NULL AS launch_speed_angle, NULL AS at_bat_number, NULL AS pitch_number, NULL AS pitch_name, NULL AS home_score, NULL AS away_score, NULL AS bat_score, NULL AS fld_score, NULL AS post_away_score, NULL AS post_home_score, NULL AS post_bat_score, NULL AS post_fld_score, NULL AS if_fielding_alignment, NULL AS of_fielding_alignment, NULL AS spin_axis, NULL AS delta_home_win_exp, NULL AS delta_run_exp, NULL AS bat_speed, NULL AS swing_length, NULL AS estimated_slg_using_speedangle, NULL AS delta_pitcher_run_exp, NULL AS hyper_speed, NULL AS home_score_diff, NULL AS bat_score_diff, NULL AS home_win_exp, NULL AS bat_win_exp, NULL AS age_pit_legacy, NULL AS age_bat_legacy, NULL AS age_pit, NULL AS age_bat, NULL AS n_thruorder_pitcher, NULL AS n_priorpa_thisgame_player_at_bat, NULL AS pitcher_days_since_prev_game, NULL AS batter_days_since_prev_game, NULL AS pitcher_days_until_next_game, NULL AS batter_days_until_next_game, NULL AS api_break_z_with_gravity, NULL AS api_break_x_arm, NULL AS api_break_x_batter_in, NULL AS arm_angle, NULL AS attack_angle, NULL AS attack_direction, NULL AS swing_path_tilt, NULL AS intercept_ball_minus_batter_pos_x_inches, NULL AS intercept_ball_minus_batter_pos_y_inches) WHERE FALSE)
+        CREATE TABLE IF NOT EXISTS players (
+            player_id INTEGER PRIMARY KEY,
+            player_name VARCHAR
+        )
     """)
+    
     return conn
 
 def get_latest_date_in_db(conn):
@@ -59,6 +110,23 @@ def get_latest_date_in_db(conn):
 def main():
     """Main function to orchestrate the data collection process."""
     conn = create_database()
+    
+    # Fetch and insert player data
+    print("Fetching player data...")
+    for player_type in ['pitcher', 'batter']:
+        df = get_player_data(player_type)
+        if df is not None and not df.empty:
+            # Insert only new players
+            conn.execute("""
+                INSERT INTO players (player_id, player_name)
+                SELECT player_id, player_name
+                FROM df
+                WHERE player_id NOT IN (SELECT player_id FROM players)
+            """)
+            print(f"Inserted {len(df)} {player_type}s")
+        time.sleep(1)
+    
+    # Continue with statcast data collection
     latest_date = get_latest_date_in_db(conn)
     if latest_date is None:
         start_date = datetime.strptime(SEASON_RANGES[2022]['start'], '%Y-%m-%d')
@@ -81,6 +149,20 @@ def main():
         print(f"Fetching data for {date_str}...")
         df = get_statcast_data(date_str)
         if df is not None and not df.empty:
+            # Get schema columns
+            schema_cols = [col[1] for col in conn.execute('PRAGMA table_info(statcast_data)').fetchall()]
+            # Determine which columns to keep
+            if KEEP_COLUMNS:
+                # Only keep columns present in both KEEP_COLUMNS and schema
+                keep = [col for col in KEEP_COLUMNS if col in df.columns and col in schema_cols]
+            else:
+                keep = [col for col in schema_cols if col in df.columns]
+            df = df[keep]
+            # Round float columns to 4 decimal places
+            float_cols = df.select_dtypes(include=['float64']).columns
+            df[float_cols] = df[float_cols].round(4)
+            # Reorder to match schema for insert
+            df = df.reindex(columns=schema_cols)
             conn.execute("INSERT INTO statcast_data SELECT * FROM df")
             print(f"Inserted {len(df)} rows for {date_str}")
         else:
