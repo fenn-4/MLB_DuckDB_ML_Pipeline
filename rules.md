@@ -11,10 +11,15 @@ This project collects MLB Statcast data from 2022-2025 and stores it in a DuckDB
 
 ## Database Schema
 
-### Table: players
-A reference table containing player information:
-- player_id (INTEGER PRIMARY KEY): Unique identifier for each player
-- player_name (VARCHAR): Player's full name
+### Table: pitchers
+A reference table containing pitcher information:
+- player_id (INTEGER PRIMARY KEY): Unique identifier for each pitcher
+- player_name (VARCHAR): Pitcher's full name
+
+### Table: batters
+A reference table containing batter information:
+- player_id (INTEGER PRIMARY KEY): Unique identifier for each batter
+- player_name (VARCHAR): Batter's full name
 
 ### Table: statcast_data
 The main table containing all Statcast data with the following columns:
@@ -32,8 +37,8 @@ The main table containing all Statcast data with the following columns:
 - delta_run_exp (DOUBLE): Change in run expectancy
 
 #### Player Information
-- batter (INTEGER): Batter ID (references players.player_id)
-- pitcher (INTEGER): Pitcher ID (references players.player_id)
+- batter (INTEGER): Batter ID (references batters.player_id)
+- pitcher (INTEGER): Pitcher ID (references pitchers.player_id)
 - stand (VARCHAR): Batter's stance
 - p_throws (VARCHAR): Pitcher's throwing hand
 
@@ -97,20 +102,21 @@ The main table containing all Statcast data with the following columns:
 
 ## Data Collection Process
 1. Data is collected day by day during the regular season
-2. Player data is fetched first for both pitchers and batters
+2. Player data is fetched first for both pitchers and batters into their respective tables
 3. Each day's Statcast data is fetched from the MLB Statcast API
 4. Data is immediately inserted into the DuckDB database
 5. A 1-second delay is implemented between requests to avoid overwhelming the server
 
 ## Usage
-Run the start.py script to begin data collection:
+Run the db_init.py script to begin data collection:
 ```bash
-python start.py
+python db_init.py
 ```
 
 The script will:
 1. Create the DuckDB database if it doesn't exist
-2. Create the players and statcast_data tables with the defined schemas
-3. Collect player data for both pitchers and batters
+2. Create the pitchers, batters, and statcast_data tables with the defined schemas
+3. Collect player data for both pitchers and batters into their respective tables
 4. Collect data for each day in the specified season ranges
 5. Store the data in the database
+6. After data collection, update player info (handedness, stance) and calculate advanced metrics (phi, estimated ISO, etc.)

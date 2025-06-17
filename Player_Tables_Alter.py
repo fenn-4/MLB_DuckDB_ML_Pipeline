@@ -55,13 +55,6 @@ def update_player_info():
             END
     """)
     
-    # Verify the updates
-    print("\nVerifying updates:")
-    print("\nSample of updated pitchers:")
-    print(conn.execute("SELECT player_id, player_name, p_throws FROM pitchers LIMIT 5").fetchall())
-    print("\nSample of updated batters:")
-    print(conn.execute("SELECT player_id, player_name, stand FROM batters LIMIT 5").fetchall())
-    
     # Close the connection
     conn.close()
 

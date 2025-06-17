@@ -1,12 +1,21 @@
+"""
+MLB Statcast Data Pipeline Initialization Script
+
+- Collects player and Statcast data for MLB seasons 2022-2025
+- Stores data in DuckDB
+- Updates player info and advanced metrics after data collection
+"""
+
 import requests
 import pandas as pd
 import duckdb
 from datetime import datetime, timedelta
 from io import StringIO
 import time
+from Player_Tables_Alter import update_player_info
+from Statcast_Table_Alter import update_advanced_metrics
 
-# Columns to keep from the API data before inserting into the database
-# These columns match exactly with schema.sql
+# --- Configuration ---
 KEEP_COLUMNS = [
     'game_pk', 'game_date', 'pitch_type', 'release_speed', 'release_pos_x', 'release_pos_z',
     'batter', 'pitcher', 'events', 'description', 'zone', 'stand', 'p_throws',
@@ -25,7 +34,6 @@ KEEP_COLUMNS = [
     'intercept_ball_minus_batter_pos_y_inches'
 ]
 
-# Season date ranges
 SEASON_RANGES = {
     2022: {'start': '2022-04-07', 'end': '2022-10-05'},
     2023: {'start': '2023-03-30', 'end': '2023-10-01'},
@@ -33,35 +41,57 @@ SEASON_RANGES = {
     2025: {'start': '2025-03-27', 'end': '2025-09-28'}
 }
 
+# --- Database Manager ---
+class DatabaseManager:
+    def __init__(self, db_path='mlb_statcast.db', schema_path='schema.sql'):
+        self.conn = duckdb.connect(db_path)
+        with open(schema_path, 'r') as f:
+            self.conn.execute(f.read())
+
+    def close(self):
+        self.conn.close()
+
+    def get_latest_date(self):
+        result = self.conn.execute("SELECT MAX(game_date) FROM statcast_data").fetchone()
+        return result[0] if result[0] is not None else None
+
+    def insert_players(self, player_type, df):
+        table_name = f"{player_type}s"
+        self.conn.execute(f"""
+            INSERT INTO {table_name} (player_id, player_name)
+            SELECT player_id, player_name
+            FROM df
+            WHERE player_id NOT IN (SELECT player_id FROM {table_name})
+        """)
+
+    def insert_statcast_data(self, df):
+        schema_cols = [col[1] for col in self.conn.execute('PRAGMA table_info(statcast_data)').fetchall()]
+        if KEEP_COLUMNS:
+            keep = [col for col in KEEP_COLUMNS if col in df.columns and col in schema_cols]
+        else:
+            keep = [col for col in schema_cols if col in df.columns]
+        df = df[keep]
+        float_cols = df.select_dtypes(include=['float64']).columns
+        df[float_cols] = df[float_cols].round(4)
+        df = df.reindex(columns=schema_cols)
+        self.conn.execute("INSERT INTO statcast_data SELECT * FROM df")
+
+    def count_statcast_rows(self):
+        return self.conn.execute("SELECT COUNT(*) FROM statcast_data").fetchone()[0]
+
+# --- Data Fetching Functions ---
 def get_player_data(player_type):
-    """Fetches player data for a given player type (pitcher or batter).
-
-    Args:
-        player_type (str): Either 'pitcher' or 'batter'
-
-    Returns:
-        pandas.DataFrame: The fetched data, or None if the request fails.
-    """
     url = f"https://baseballsavant.mlb.com/statcast_search/csv?all=true&hfPT=&hfAB=&hfGT=R%7C&hfPR=&hfZ=&hfStadium=&hfBBL=&hfNewZones=&hfPull=&hfC=&hfSea=2025%7C2024%7C2023%7C2022%7C&hfSit=&player_type={player_type}&hfOuts=&hfOpponent=&pitcher_throws=&batter_stands=&hfSA=&game_date_gt=&game_date_lt=&hfMo=&hfTeam=&home_road=&hfRO=&position=&hfInfield=&hfOutfield=&hfInn=&hfBBT=&hfFlag=&metric_1=&group_by=name&min_pitches=0&min_results=0&min_pas=0&sort_col=pitches&player_event_sort=api_p_release_speed&sort_order=desc&minors=false"
     try:
         response = requests.get(url)
         if response.status_code == 200:
             df = pd.read_csv(StringIO(response.text))
-            # Keep only player_id and player_name columns
             return df[['player_id', 'player_name']].drop_duplicates()
         return None
-    except:
+    except Exception:
         return None
 
 def get_statcast_data(date):
-    """Fetches Statcast data for a given date from the MLB API.
-
-    Args:
-        date (str): The date in 'YYYY-MM-DD' format.
-
-    Returns:
-        pandas.DataFrame: The fetched data, or None if the request fails.
-    """
     year = datetime.strptime(date, '%Y-%m-%d').year
     url = f"https://baseballsavant.mlb.com/statcast_search/csv?hfPT=&hfAB=&hfGT=R%7C&hfPR=&hfZ=&hfStadium=&hfBBL=&hfNewZones=&hfPull=&hfC=&hfSea={year}%7C&hfSit=&player_type=batter&hfOuts=&hfOpponent=&pitcher_throws=&batter_stands=&hfSA=&game_date_gt={date}&game_date_lt={date}&hfMo=&hfTeam=&home_road=&hfRO=&position=&hfInfield=&hfOutfield=&hfInn=&hfBBT=&hfFlag=is%5C.%5C.tracked%7C&metric_1=&group_by=name&min_pitches=0&min_results=0&min_pas=0&sort_col=pitches&player_event_sort=api_p_release_speed&sort_order=desc&type=details&all=true&minors=false"
     try:
@@ -69,65 +99,21 @@ def get_statcast_data(date):
         if response.status_code == 200:
             return pd.read_csv(StringIO(response.text))
         return None
-    except:
+    except Exception:
         return None
 
-def create_database():
-    """Creates the DuckDB database and tables if they don't exist.
-
-    Returns:
-        duckdb.DuckDBPyConnection: The database connection.
-    """
-    conn = duckdb.connect('mlb_statcast.db')
-    
-    # Read and execute schema from file
-    with open('schema.sql', 'r') as f:
-        schema = f.read()
-        conn.execute(schema)
-    
-    # Create players table if it doesn't exist
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS players (
-            player_id INTEGER PRIMARY KEY,
-            player_name VARCHAR
-        )
-    """)
-    
-    return conn
-
-def get_latest_date_in_db(conn):
-    """Retrieves the latest date in the database.
-
-    Args:
-        conn (duckdb.DuckDBPyConnection): The database connection.
-
-    Returns:
-        datetime.date: The latest date, or None if the database is empty.
-    """
-    result = conn.execute("SELECT MAX(game_date) FROM statcast_data").fetchone()
-    return result[0] if result[0] is not None else None
-
+# --- Main Pipeline ---
 def main():
-    """Main function to orchestrate the data collection process."""
-    conn = create_database()
-    
-    # Fetch and insert player data
+    db = DatabaseManager()
     print("Fetching player data...")
     for player_type in ['pitcher', 'batter']:
         df = get_player_data(player_type)
         if df is not None and not df.empty:
-            # Insert only new players
-            conn.execute("""
-                INSERT INTO players (player_id, player_name)
-                SELECT player_id, player_name
-                FROM df
-                WHERE player_id NOT IN (SELECT player_id FROM players)
-            """)
+            db.insert_players(player_type, df)
             print(f"Inserted {len(df)} {player_type}s")
         time.sleep(1)
-    
-    # Continue with statcast data collection
-    latest_date = get_latest_date_in_db(conn)
+
+    latest_date = db.get_latest_date()
     if latest_date is None:
         start_date = datetime.strptime(SEASON_RANGES[2022]['start'], '%Y-%m-%d')
     else:
@@ -149,29 +135,21 @@ def main():
         print(f"Fetching data for {date_str}...")
         df = get_statcast_data(date_str)
         if df is not None and not df.empty:
-            # Get schema columns
-            schema_cols = [col[1] for col in conn.execute('PRAGMA table_info(statcast_data)').fetchall()]
-            # Determine which columns to keep
-            if KEEP_COLUMNS:
-                # Only keep columns present in both KEEP_COLUMNS and schema
-                keep = [col for col in KEEP_COLUMNS if col in df.columns and col in schema_cols]
-            else:
-                keep = [col for col in schema_cols if col in df.columns]
-            df = df[keep]
-            # Round float columns to 4 decimal places
-            float_cols = df.select_dtypes(include=['float64']).columns
-            df[float_cols] = df[float_cols].round(4)
-            # Reorder to match schema for insert
-            df = df.reindex(columns=schema_cols)
-            conn.execute("INSERT INTO statcast_data SELECT * FROM df")
+            db.insert_statcast_data(df)
             print(f"Inserted {len(df)} rows for {date_str}")
         else:
             print(f"No data for {date_str}")
         time.sleep(1)
-    total_rows = conn.execute("SELECT COUNT(*) FROM statcast_data").fetchone()[0]
+    total_rows = db.count_statcast_rows()
     print(f"\nTotal rows in database: {total_rows}")
-    conn.close()
+    db.close()
     print("Done.")
 
+    # Post-processing: update player info and advanced metrics
+    print("\nUpdating player info (p_throws and stand)...")
+    update_player_info()
+    print("\nCalculating advanced metrics (phi and estimated_ISO)...")
+    update_advanced_metrics()
+
 if __name__ == "__main__":
-    main()
+    main() 

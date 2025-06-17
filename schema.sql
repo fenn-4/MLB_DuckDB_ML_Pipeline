@@ -1,3 +1,18 @@
+-- Create pitchers table
+CREATE TABLE IF NOT EXISTS pitchers (
+    player_id INTEGER PRIMARY KEY,
+    player_name VARCHAR,
+    p_throws VARCHAR
+);
+
+-- Create batters table
+CREATE TABLE IF NOT EXISTS batters (
+    player_id INTEGER PRIMARY KEY,
+    player_name VARCHAR,
+    stand VARCHAR
+);
+
+-- Create statcast_data table
 CREATE TABLE IF NOT EXISTS statcast_data (
     game_pk INTEGER,
     game_date DATE,
@@ -46,6 +61,8 @@ CREATE TABLE IF NOT EXISTS statcast_data (
     estimated_ba_using_speedangle DOUBLE,
     estimated_woba_using_speedangle DOUBLE,
     estimated_slg_using_speedangle DOUBLE,
+    estimated_iso_using_speedangle DOUBLE,
+    phi DOUBLE,
     pitch_name VARCHAR,
     post_away_score INTEGER,
     post_home_score INTEGER,
@@ -64,5 +81,7 @@ CREATE TABLE IF NOT EXISTS statcast_data (
     attack_direction DOUBLE,
     swing_path_tilt DOUBLE,
     intercept_ball_minus_batter_pos_x_inches DOUBLE,
-    intercept_ball_minus_batter_pos_y_inches DOUBLE
+    intercept_ball_minus_batter_pos_y_inches DOUBLE,
+    FOREIGN KEY (batter) REFERENCES batters(player_id),
+    FOREIGN KEY (pitcher) REFERENCES pitchers(player_id)
 ); 
