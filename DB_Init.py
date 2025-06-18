@@ -4,6 +4,7 @@ MLB Statcast Data Pipeline Initialization Script
 - Collects player and Statcast data for MLB seasons 2022-2025
 - Stores data in DuckDB
 - Updates player info and advanced metrics after data collection
+- Calculates rolling statistics for players
 """
 
 import requests
@@ -43,7 +44,7 @@ SEASON_RANGES = {
 
 # --- Database Manager ---
 class DatabaseManager:
-    def __init__(self, db_path='mlb_statcast.db', schema_path='schema.sql'):
+    def __init__(self, db_path='mlb_statcast.db', schema_path='Schema_Init.sql'):
         self.conn = duckdb.connect(db_path)
         with open(schema_path, 'r') as f:
             self.conn.execute(f.read())
