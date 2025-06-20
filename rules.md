@@ -1,7 +1,7 @@
 # MLB Statcast Data Pipeline Rules
 
 ## Overview
-This project collects, processes, and stores MLB Statcast data in a DuckDB database. The pipeline includes player and pitch-level data for MLB seasons 2022-2025. The database is initialized and updated using DB_Init.py.
+This project collects, processes, and stores MLB and Triple-A Statcast data in a DuckDB database. The pipeline includes player and pitch-level data for MLB seasons 2021-2025 and Triple-A seasons 2023-2025. The database is initialized and updated using the unified `DB_Init_MLB+AAA.py` script.
 
 ## Database Schema (as of latest update)
 
@@ -17,7 +17,7 @@ This project collects, processes, and stores MLB Statcast data in a DuckDB datab
 - player_name VARCHAR
 - stand VARCHAR
 
-#### statcast_data
+#### statcast_major
 - game_pk INTEGER
 - game_date DATE
 - pitch_type VARCHAR
@@ -87,18 +87,88 @@ This project collects, processes, and stores MLB Statcast data in a DuckDB datab
 - intercept_ball_minus_batter_pos_x_inches DOUBLE
 - intercept_ball_minus_batter_pos_y_inches DOUBLE
 - HA_factor DOUBLE (Hitting Approach factor calculated from phi)
+- HA_Adj_estimated_xISO DOUBLE (HA-adjusted estimated ISO)
+- is_zone INTEGER (Strike zone indicator)
+- pitch_bucket VARCHAR (Pitch category: Fastball, Breaking Ball, Off-speed, Other)
+- pitch_subtype VARCHAR (Specific pitch type)
+
+#### statcast_minor
+- Identical structure to statcast_major but for minor league data
+- No foreign key constraints (minor league players may not be in major league player tables)
+- Contains Triple-A Statcast data from Baseball Savant API
+- Populated using the unified `DB_Init_MLB+AAA.py` script
+
+#### start_game
+- game_pk INTEGER PRIMARY KEY
+- game_date DATE
+- home_team VARCHAR
+- away_team VARCHAR
+- home_starting_pitcher INTEGER (FK to pitchers)
+- away_starting_pitcher INTEGER (FK to pitchers)
+- home_batter_1 INTEGER
+- home_batter_2 INTEGER
+- home_batter_3 INTEGER
+- home_batter_4 INTEGER
+- home_batter_5 INTEGER
+- home_batter_6 INTEGER
+- home_batter_7 INTEGER
+- home_batter_8 INTEGER
+- home_batter_9 INTEGER
+- away_batter_1 INTEGER
+- away_batter_2 INTEGER
+- away_batter_3 INTEGER
+- away_batter_4 INTEGER
+- away_batter_5 INTEGER
+- away_batter_6 INTEGER
+- away_batter_7 INTEGER
+- away_batter_8 INTEGER
+- away_batter_9 INTEGER
 
 ### Notes
 - The rolling_stats table and all related logic have been removed from the project as of this update.
-- All foreign key constraints are enforced between statcast_data and the player tables.
+- All foreign key constraints are enforced between statcast_major and the player tables.
+- The statcast_minor table has no foreign key constraints to allow for minor league players not in the major league player tables.
 
 ## Data Collection & Processing
-- Player and statcast data are fetched and inserted using DB_Init.py.
-- Player info (throwing/batting hand) and advanced metrics (phi, estimated_ISO, HA_factor) are updated after data collection.
-- No rolling or windowed statistics are currently calculated or stored.
+- **Unified Pipeline**: All data collection is handled by `DB_Init_MLB+AAA.py`
+- **MLB Data**: Seasons 2021-2025, stored in `statcast_major` table
+- **Triple-A Data**: Seasons 2023-2025, stored in `statcast_minor` table
+- **Player Data**: MLB player information fetched and stored in `pitchers` and `batters` tables
+- **Advanced Metrics**: Calculated for both MLB and Triple-A data using `Helper_Queries/Statcast_Table_Alter.py`
+- **Player Info Updates**: Throwing/batting hand information updated using `Helper_Queries/Player_Tables_Alter.py`
+- **Schema Management**: Database schema defined in `Helper_Queries/Schema_Init.sql`
+
+## File Structure
+```
+MLB_duckDB_ML_Pipeline/
+├── DB_Init_MLB+AAA.py          # Main unified data collection script
+├── Helper_Queries/             # Helper scripts and schema
+│   ├── Schema_Init.sql         # Database schema definition
+│   ├── Player_Tables_Alter.py  # Player information updates
+│   └── Statcast_Table_Alter.py # Advanced metrics calculations
+├── Batter_Pitch_Dashboard.py   # Interactive dashboard
+├── requirements.txt            # Python dependencies
+├── README.md                   # Project documentation
+└── rules.md                    # This file - detailed rules and schema
+```
+
+## Season Date Ranges
+
+### MLB Seasons
+- 2021: April 1 - October 3
+- 2022: April 7 - October 5
+- 2023: March 30 - October 1
+- 2024: March 28 - September 29
+- 2025: March 27 - September 28
+
+### Triple-A Seasons
+- 2023: March 31 - September 24
+- 2024: March 29 - September 22
+- 2025: March 28 - September 21
 
 ## Migrations
-- If you add or remove columns/tables, update this file and Schema_Init.sql accordingly.
+- If you add or remove columns/tables, update this file and `Helper_Queries/Schema_Init.sql` accordingly.
+- All schema changes should be reflected in both the SQL file and this documentation.
 
 ---
 _Last updated: [automated update]_
