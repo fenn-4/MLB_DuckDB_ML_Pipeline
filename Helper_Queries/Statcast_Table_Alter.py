@@ -23,39 +23,55 @@ def update_advanced_metrics(db_path='Full_DB/mlb_statcast.db', table_name='statc
     
     print(f"Updating advanced metrics in {table_name}...")
     
-    # Calculate phi, estimated_ISO, HA_factor, and HA_Adj_estimated_xISO
+    # Calculate phi (hit angle) - only for records with hit coordinates
+    print(f"Calculating phi (hit angle) for {table_name}...")
     conn.execute(f"""
         UPDATE {table_name}
-        SET 
-            phi = CASE 
-                WHEN hc_x IS NOT NULL AND hc_y IS NOT NULL AND (198.27 - hc_y) != 0
-                THEN ATAN((hc_x - 125.42) / (198.27 - hc_y))
-                ELSE NULL 
-            END,
-            estimated_iso_using_speedangle = CASE 
-                WHEN estimated_ba_using_speedangle IS NOT NULL AND estimated_slg_using_speedangle IS NOT NULL 
-                THEN (estimated_slg_using_speedangle - estimated_ba_using_speedangle)
-                ELSE NULL 
-            END,
-            HA_factor = CASE 
-                WHEN phi IS NOT NULL 
-                THEN 0.569 * POWER(
-                    CASE 
-                        WHEN phi < -1 THEN -1
-                        WHEN phi > 1 THEN 1
-                        ELSE phi
-                    END, 
-                    2
-                ) + 0.569
-                ELSE NULL 
-            END,
-            HA_Adj_estimated_xISO = CASE
-                WHEN estimated_iso_using_speedangle IS NOT NULL AND HA_factor IS NOT NULL
-                THEN estimated_iso_using_speedangle * HA_factor
-                ELSE NULL
-            END
-        WHERE launch_angle IS NOT NULL 
-        AND launch_speed IS NOT NULL
+        SET phi = CASE 
+            WHEN hc_x IS NOT NULL AND hc_y IS NOT NULL AND (198.27 - hc_y) != 0
+            THEN ATAN((hc_x - 125.42) / (198.27 - hc_y))
+            ELSE NULL 
+        END
+        WHERE hc_x IS NOT NULL AND hc_y IS NOT NULL
+    """)
+    
+    # Calculate estimated_iso_using_speedangle - only for records with both BA and SLG
+    print(f"Calculating estimated_iso_using_speedangle for {table_name}...")
+    conn.execute(f"""
+        UPDATE {table_name}
+        SET estimated_iso_using_speedangle = CASE 
+            WHEN estimated_ba_using_speedangle IS NOT NULL AND estimated_slg_using_speedangle IS NOT NULL 
+            THEN (estimated_slg_using_speedangle - estimated_ba_using_speedangle)
+            ELSE NULL 
+        END
+        WHERE estimated_ba_using_speedangle IS NOT NULL AND estimated_slg_using_speedangle IS NOT NULL
+    """)
+    
+    # Calculate HA_factor - only for records with phi
+    print(f"Calculating HA_factor for {table_name}...")
+    conn.execute(f"""
+        UPDATE {table_name}
+        SET HA_factor = CASE 
+            WHEN phi IS NOT NULL 
+            THEN 0.569 * POWER(
+                CASE 
+                    WHEN phi < -1 THEN -1
+                    WHEN phi > 1 THEN 1
+                    ELSE phi
+                END, 
+                2
+            ) + 0.569
+            ELSE NULL 
+        END
+        WHERE phi IS NOT NULL
+    """)
+    
+    # Calculate HA_Adj_estimated_xISO - only for records with both components
+    print(f"Calculating HA_Adj_estimated_xISO for {table_name}...")
+    conn.execute(f"""
+        UPDATE {table_name}
+        SET HA_Adj_estimated_xISO = estimated_iso_using_speedangle * HA_factor
+        WHERE estimated_iso_using_speedangle IS NOT NULL AND HA_factor IS NOT NULL
     """)
     
     # Add is_zone column if it doesn't exist
@@ -129,6 +145,7 @@ def update_advanced_metrics(db_path='Full_DB/mlb_statcast.db', table_name='statc
                 WHEN 'PO' THEN 'Other'
                 ELSE NULL
             END
+        WHERE pitch_type IS NOT NULL
     """)
     
     # Commit the changes

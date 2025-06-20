@@ -117,8 +117,28 @@ class DatabaseManager:
 
     def update_advanced_metrics(self, table):
         """Update advanced metrics for a specific table"""
-        from Helper_Queries.Statcast_Table_Alter import update_advanced_metrics
-        update_advanced_metrics(DB_PATH, table)
+        try:
+            from Helper_Queries.Statcast_Table_Alter import update_advanced_metrics
+            update_advanced_metrics(DB_PATH, table)
+            print(f"Advanced metrics calculation completed for {table}")
+        except Exception as e:
+            print(f"Error calculating advanced metrics for {table}: {e}")
+            raise e
+
+    def update_all_advanced_metrics(self):
+        """Update advanced metrics for both major and minor league tables"""
+        try:
+            from Helper_Queries.Statcast_Table_Alter import update_advanced_metrics
+            
+            # Update both tables
+            for table_name in ['statcast_major', 'statcast_minor']:
+                print(f"\nCalculating advanced metrics for {table_name}...")
+                update_advanced_metrics(DB_PATH, table_name)
+                print(f"Advanced metrics calculation completed for {table_name}")
+                
+        except Exception as e:
+            print(f"Error calculating advanced metrics: {e}")
+            raise e
 
 # === DATA FETCHING ===
 def build_url(date, config):
@@ -199,8 +219,6 @@ def process_source(db, config):
             print(f"No data for {date}")
         time.sleep(REQUEST_DELAY)
     print(f"Total rows in {table}: {db.count_rows(table)}")
-    print(f"Calculating advanced metrics for {config['description']}...")
-    db.update_advanced_metrics(table)
 
 # === MAIN ===
 def main():
@@ -217,10 +235,37 @@ def main():
             else:
                 print(f"No {ptype} data found.")
             time.sleep(REQUEST_DELAY)
-        for config in DATA_SOURCES.values():
+        
+        # Process each data source
+        for source_name, config in DATA_SOURCES.items():
+            print(f"\n{'='*50}")
+            print(f"Processing {config['description']} ({source_name})...")
+            print(f"{'='*50}")
             process_source(db, config)
+        
+        # Calculate advanced metrics for both tables
+        print(f"\n{'='*50}")
+        print("Calculating advanced metrics for all tables...")
+        print(f"{'='*50}")
+        db.update_all_advanced_metrics()
+        
+        # Verify the advanced metrics were calculated for both tables
+        print(f"\n{'='*50}")
+        print("Verifying advanced metrics calculation...")
+        print(f"{'='*50}")
+        for table_name in ['statcast_major', 'statcast_minor']:
+            xiso_count = db.conn.execute(f"SELECT COUNT(*) FROM {table_name} WHERE HA_Adj_estimated_xISO IS NOT NULL").fetchone()[0]
+            total_count = db.conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
+            print(f"{table_name}: {xiso_count:,} out of {total_count:,} records have HA_Adj_estimated_xISO calculated")
+        
         db.close()
+        print("\n" + "="*50)
         print("All data sources processed successfully!")
+        print("="*50)
+    except Exception as e:
+        print(f"Error in main pipeline: {e}")
+        import traceback
+        traceback.print_exc()
     finally:
         caffeinate.terminate()
         caffeinate.wait()
