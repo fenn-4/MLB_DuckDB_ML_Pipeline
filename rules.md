@@ -88,9 +88,9 @@ This project collects, processes, and stores MLB and Triple-A Statcast data in a
 - intercept_ball_minus_batter_pos_y_inches DOUBLE
 - HA_factor DOUBLE (Hitting Approach factor calculated from phi)
 - HA_Adj_estimated_xISO DOUBLE (HA-adjusted estimated ISO)
-- is_zone INTEGER (Strike zone indicator)
+- is_zone INTEGER (Strike zone indicator: 1=in-zone, 0=out-of-zone)
 - pitch_bucket VARCHAR (Pitch category: Fastball, Breaking Ball, Off-speed, Other)
-- pitch_subtype VARCHAR (Specific pitch type)
+- pitch_subtype VARCHAR (Specific pitch type: Fastball, Slider, Sinker, Curveball, Cutter, Off-speed, Other)
 
 #### statcast_minor
 - Identical structure to statcast_major but for minor league data
@@ -129,6 +129,8 @@ This project collects, processes, and stores MLB and Triple-A Statcast data in a
 - All foreign key constraints are enforced between statcast_major and the player tables.
 - The statcast_minor table has no foreign key constraints to allow for minor league players not in the major league player tables.
 
+
+
 ## Data Collection & Processing
 - **Unified Pipeline**: All data collection is handled by `DB_Init_MLB+AAA.py`
 - **MLB Data**: Seasons 2021-2025, stored in `statcast_major` table
@@ -141,15 +143,48 @@ This project collects, processes, and stores MLB and Triple-A Statcast data in a
 ## File Structure
 ```
 MLB_duckDB_ML_Pipeline/
-├── DB_Init_MLB+AAA.py          # Main unified data collection script
-├── Helper_Queries/             # Helper scripts and schema
-│   ├── Schema_Init.sql         # Database schema definition
-│   ├── Player_Tables_Alter.py  # Player information updates
-│   └── Statcast_Table_Alter.py # Advanced metrics calculations
-├── Batter_Pitch_Dashboard.py   # Interactive dashboard
-├── requirements.txt            # Python dependencies
-├── README.md                   # Project documentation
-└── rules.md                    # This file - detailed rules and schema
+├── .gitignore                      # Specifies intentionally untracked files to ignore
+├── DB_Init_MLB+AAA.py              # Main unified data collection and database initialization script
+├── requirements.txt                # Python dependencies for the project
+├── rules.md                        # This file - project documentation, rules, and schema
+├── bayesian_whiff_model.py         # Bayesian hierarchical model for whiff prediction
+├── clustered_whiff_model.py        # Clustered batter whiff prediction model
+├── clustered_pitcher_model.py     # Clustered pitcher whiff prediction model
+├── combined_whiff_model.py         # Combined batter-pitcher meta-model
+├── routinized_whiff_model.py       # Computationally-efficient hierarchical binomial whiff model
+├── evaluate_clustered_model.py     # Evaluation script for clustered batter model
+├── evaluate_clustered_pitcher_model.py # Evaluation script for clustered pitcher model
+├── test_whiff_model.py             # Test suite for the Bayesian whiff model
+
+├── Full_DB/
+│   ├── mlb_statcast.db             # Main DuckDB database file
+│   └── mlb_statcast_backup.db      # Backup of the database
+
+├── Model_Weights/
+│   ├── bayesian_whiff_model_2024_2025_trace.nc                # Trained Bayesian model trace
+│   ├── bayesian_whiff_model_2024_2025_encoders.pkl            # Feature encoders for the model
+│   ├── clustered_whiff_model_2024_2025_trace.nc               # Clustered batter model trace
+│   ├── clustered_whiff_model_2024_2025_artifacts.pkl          # Clustered batter model artifacts
+│   ├── clustered_pitcher_whiff_model_2024_2025_trace.nc       # Clustered pitcher model trace
+│   ├── clustered_pitcher_whiff_model_2024_2025_artifacts.pkl  # Clustered pitcher model artifacts
+│   ├── combined_whiff_model_trace.nc                          # Combined model trace
+│   ├── combined_whiff_model_artifacts.pkl                     # Combined model artifacts
+│   ├── routinized_whiff_model_trace.nc                        # Trace for the routinized binomial whiff model
+│   ├── routinized_whiff_model_artifacts.pkl                   # Artifacts for the routinized binomial whiff model
+│   └── whiff_model_diagnostics.png                            # Model diagnostic plots
+
+├── Helper_Queries/
+│   ├── Schema_Init.sql             # SQL script to define the initial database schema
+│   ├── Player_Tables_Alter.py      # Script to update player information (e.g., handedness)
+│   ├── Statcast_Table_Alter.py     # Script to calculate advanced metrics and alter statcast tables
+│   └── populate_games.py           # Script to populate game-level data
+
+├── Backup_Init/
+│   ├── DB_Init.py                  # Older initialization script (likely legacy)
+│   └── Minor_League_Data_Init.py   # Older script for minor league data (likely legacy)
+
+└── db/
+    └── (empty)                     # Likely placeholder for database-related modules
 ```
 
 ## Season Date Ranges
@@ -169,6 +204,22 @@ MLB_duckDB_ML_Pipeline/
 ## Migrations
 - If you add or remove columns/tables, update this file and `Helper_Queries/Schema_Init.sql` accordingly.
 - All schema changes should be reflected in both the SQL file and this documentation.
+- New machine learning models should be documented in this section with their purpose, features, and dependencies.
+- Model performance metrics should be updated as new results become available.
+
+### Recent Updates
+- **December 2024**: Added Routinized Hierarchical Binomial Whiff Model
+  - Implemented a computationally efficient and stable "workhorse" model for whiff prediction.
+  - Uses a Binomial likelihood on data aggregated by `(batter, pitcher, p_throws, pitch_subtype, is_zone)`.
+  - Models whiff probability via hierarchical effects for players, pitch types, zone location, and their interactions.
+  - Includes batter platoon splits and plate discipline (in-zone vs. out-of-zone) effects.
+  - Trained on 2024-2025 data for rapid, repeatable analysis.
+
+- **December 2024**: Added Bayesian Hierarchical Whiff Prediction Model
+  - Implemented hierarchical Bayesian model for whiff probability prediction
+  - Uses batter random effects and fixed effects for pitch characteristics
+  - Trained on 2024-2025 swing data with 714 qualified batters
+  - Achieves proper convergence with R-hat < 1.1 for all parameters
 
 ---
-_Last updated: [automated update]_
+_Last updated: December 2024_

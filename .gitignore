@@ -15,4 +15,32 @@ env/
 .idea/
 
 # Logs
-*.log 
+*.log
+
+# IDE and OS-specific
+.DS_Store
+.idea/
+*.pyc
+
+# Data files
+Full_DB/*.db
+Full_DB/*.db.wal
+Full_DB/*.db.lock
+*.sqlite
+*.sqlite3
+
+# Model Artifacts
+Model_Weights/
+*.nc
+*.pkl
+
+# Generated files
+*.png
+*.jpg
+*.jpeg
+
+# Environments
+.env
+venv/
+env/
+.venv/ 
