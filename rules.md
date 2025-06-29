@@ -130,8 +130,6 @@ This project collects, processes, and stores MLB and Triple-A Statcast data in a
 - All foreign key constraints are enforced between statcast_major and the player tables.
 - The statcast_minor table has no foreign key constraints to allow for minor league players not in the major league player tables.
 
-
-
 ## Data Collection & Processing
 - **Unified Pipeline**: All data collection is handled by `DB_Init_MLB+AAA.py`
 - **MLB Data**: Seasons 2021-2025, stored in `statcast_major` table
@@ -148,38 +146,22 @@ MLB_duckDB_ML_Pipeline/
 ├── DB_Init_MLB+AAA.py              # Main unified data collection and database initialization script
 ├── requirements.txt                # Python dependencies for the project
 ├── rules.md                        # This file - project documentation, rules, and schema
-├── bayesian_whiff_model.py         # Bayesian hierarchical model for whiff prediction
-├── clustered_whiff_model.py        # Clustered batter whiff prediction model
-├── clustered_pitcher_model.py     # Clustered pitcher whiff prediction model
-├── combined_whiff_model.py         # Combined batter-pitcher meta-model
-├── combined_whiff_model_bernoulli.py # Basic Bernoulli model for whiff prediction
-├── combined_whiff_model_bernoulli_enhanced.py # Enhanced Bernoulli model with zone parameters and player x zone interactions
-├── combined_whiff_model_bernoulli_3way.py # 3-way interaction Bernoulli model
-├── routinized_whiff_model.py       # Computationally-efficient hierarchical binomial whiff model
-├── evaluate_clustered_model.py     # Evaluation script for clustered batter model
-├── evaluate_clustered_pitcher_model.py # Evaluation script for clustered pitcher model
-├── test_whiff_model.py             # Test suite for the Bayesian whiff model
-├── test_bernoulli_model_metrics.py # Test script for basic Bernoulli model with Brier score, log loss, and AUC
-├── test_bernoulli_enhanced_model_metrics.py # Test script for enhanced Bernoulli model with comprehensive metrics
+
+├── BHM_M&Test/                     # Bayesian Hierarchical Models and Testing
+│   ├── combined_whiff_model_bernoulli_enhanced.py      # Enhanced Bernoulli model with 6 whiff groups, 4-way interactions
+│   ├── combined_whiff_model_bernoulli_hierarchical.py  # Hierarchical Bernoulli model with 3 whiff groups
+│   ├── test_bernoulli_enhanced_model_metrics.py        # Test script for enhanced Bernoulli model
+│   └── test_bernoulli_model_metrics.py                 # Test script for hierarchical Bernoulli model
 
 ├── Full_DB/
 │   ├── mlb_statcast.db             # Main DuckDB database file
 │   └── mlb_statcast_backup.db      # Backup of the database
 
 ├── Model_Weights/
-│   ├── bayesian_whiff_model_2024_2025_trace.nc                # Trained Bayesian model trace
-│   ├── bayesian_whiff_model_2024_2025_encoders.pkl            # Feature encoders for the model
-│   ├── clustered_whiff_model_2024_2025_trace.nc               # Clustered batter model trace
-│   ├── clustered_whiff_model_2024_2025_artifacts.pkl          # Clustered batter model artifacts
-│   ├── clustered_pitcher_whiff_model_2024_2025_trace.nc       # Clustered pitcher model trace
-│   ├── clustered_pitcher_whiff_model_2024_2025_artifacts.pkl  # Clustered pitcher model artifacts
-│   ├── combined_whiff_model_trace.nc                          # Combined model trace
-│   ├── combined_whiff_model_artifacts.pkl                     # Combined model artifacts
-│   ├── combined_whiff_model_bernoulli_enhanced_trace.nc       # Enhanced Bernoulli model trace
+│   ├── combined_whiff_model_bernoulli_enhanced_trace.nc       # Enhanced Bernoulli model trace (6 groups)
 │   ├── combined_whiff_model_bernoulli_enhanced_artifacts.pkl  # Enhanced Bernoulli model artifacts
-│   ├── routinized_whiff_model_trace.nc                        # Trace for the routinized binomial whiff model
-│   ├── routinized_whiff_model_artifacts.pkl                   # Artifacts for the routinized binomial whiff model
-│   └── whiff_model_diagnostics.png                            # Model diagnostic plots
+│   ├── combined_whiff_model_bernoulli_hierarchical_trace.nc   # Hierarchical Bernoulli model trace (3 groups)
+│   └── combined_whiff_model_bernoulli_hierarchical_artifacts.pkl # Hierarchical Bernoulli model artifacts
 
 ├── Helper_Queries/
 │   ├── Schema_Init.sql             # SQL script to define the initial database schema
@@ -209,6 +191,28 @@ MLB_duckDB_ML_Pipeline/
 - 2024: March 29 - September 22
 - 2025: March 28 - September 21
 
+## Current Model Architecture
+
+### Enhanced Bernoulli Model (6 Whiff Groups)
+- **Location**: `BHM_M&Test/combined_whiff_model_bernoulli_enhanced.py`
+- **Configuration**: 6 whiff groups for both batters and pitchers
+- **Key Features**:
+  - 4-way interaction: whiff_group × pitcher_whiff_group × zone × pitch_subtype
+  - 3-way interaction: zone × pitch_subtype (finer spatial granularity)
+  - Individual batter and pitcher deviations
+  - Uniform priors (sigma=1) except global intercept (1.5)
+- **Test Script**: `BHM_M&Test/test_bernoulli_enhanced_model_metrics.py`
+
+### Hierarchical Bernoulli Model (3 Whiff Groups)
+- **Location**: `BHM_M&Test/combined_whiff_model_bernoulli_hierarchical.py`
+- **Configuration**: 3 whiff groups (Low, Medium, High)
+- **Key Features**:
+  - Hierarchical structure from group to individual players
+  - 4-way interaction: whiff_group × pitcher_whiff_group × zone × pitch_subtype
+  - 3-way interaction: zone × pitch_subtype
+  - Hierarchical shrinkage for better parameter estimation
+- **Test Script**: `BHM_M&Test/test_bernoulli_model_metrics.py`
+
 ## Migrations
 - If you add or remove columns/tables, update this file and `Helper_Queries/Schema_Init.sql` accordingly.
 - All schema changes should be reflected in both the SQL file and this documentation.
@@ -216,44 +220,28 @@ MLB_duckDB_ML_Pipeline/
 - Model performance metrics should be updated as new results become available.
 
 ### Recent Updates
-- **December 2024**: Updated to 8-bucket whiff group configuration
-  - Enhanced Bernoulli model now uses 8-bucket configuration: Very_Low, Low, Low_Med, Medium, Med_High, High, Very_High, Extreme
-  - Provides good granularity for detailed player analysis while maintaining reasonable parameter counts
-  - Hierarchical model maintains both 3-bucket (Low, Medium, High) and 8-bucket configurations for flexibility
-  - Standardized bucket configurations across all models for consistency
+- **December 2024**: Streamlined model architecture to two main models
+  - Enhanced Bernoulli model with 6 whiff groups for detailed analysis
+  - Hierarchical Bernoulli model with 3 whiff groups for computational efficiency
+  - Removed redundant models and analysis scripts for cleaner codebase
+  - Both models use 4-way whiff_group × pitcher_whiff_group × zone × pitch_subtype interactions
+  - Both models retain 3-way zone × pitch_subtype interactions for spatial granularity
 
-- **December 2024**: Updated to 10-bucket (decile) whiff group configuration for high granularity
-  - Enhanced Bernoulli model now uses 10-bucket configuration: Decile_1 through Decile_10
-  - Provides maximum granularity for detailed player analysis while maintaining reasonable parameter counts
-  - Hierarchical model maintains both 3-bucket (Low, Medium, High) and 8-bucket configurations for flexibility
-  - Added show_10_bucket_breakdown.py script for detailed decile analysis
+- **December 2024**: Updated to 6-bucket whiff group configuration
+  - Enhanced Bernoulli model uses 6-bucket configuration for optimal balance of granularity and sample sizes
+  - Provides good coverage for 4-way interactions while maintaining reasonable parameter counts
+  - Hierarchical model maintains 3-bucket configuration for computational efficiency
+
+- **December 2024**: Removed 2-way whiff group × pitcher whiff group interaction
+  - Kept only 4-way interaction: whiff_group × pitcher_whiff_group × zone × pitch_subtype
+  - Eliminates multicollinearity with 3-way zone × pitch_subtype interaction
+  - Both interactions are complementary: 4-way captures group-level zone/pitch effects, 3-way captures fine spatial granularity
 
 - **December 2024**: Added blast column to Statcast tables
   - Added calculated column `blast` to both `statcast_major` and `statcast_minor` tables
   - `blast` = 1 if `HA_Adj_estimated_xISO` > 0.3, 0 otherwise
   - Provides binary indicator for high-power contact based on analysis showing 39.7% HR rate for ISO > 0.3
   - Updated via `Helper_Queries/Statcast_Table_Alter.py` script
-
-- **December 2024**: Added Enhanced Bernoulli Model with Zone Parameters and Player x Zone Interactions
-  - Implemented advanced hierarchical Bernoulli model for whiff prediction with enhanced features
-  - Includes zone parameters (in-zone vs out-of-zone) and specific zone number effects (zones 1-9, 11-14)
-  - Models player x zone interactions for both batters and pitchers
-  - Incorporates league-level zone x pitch type interactions
-  - Trained on 2024-2025 data with comprehensive test suite including Brier score, log loss, and AUC metrics
-  - Provides detailed diagnostics by pitch type and zone location
-
-- **December 2024**: Added Routinized Hierarchical Binomial Whiff Model
-  - Implemented a computationally efficient and stable "workhorse" model for whiff prediction.
-  - Uses a Binomial likelihood on data aggregated by `(batter, pitcher, p_throws, pitch_subtype, is_zone)`.
-  - Models whiff probability via hierarchical effects for players, pitch types, zone location, and their interactions.
-  - Includes batter platoon splits and plate discipline (in-zone vs. out-of-zone) effects.
-  - Trained on 2024-2025 data for rapid, repeatable analysis.
-
-- **December 2024**: Added Bayesian Hierarchical Whiff Prediction Model
-  - Implemented hierarchical Bayesian model for whiff probability prediction
-  - Uses batter random effects and fixed effects for pitch characteristics
-  - Trained on 2024-2025 swing data with 714 qualified batters
-  - Achieves proper convergence with R-hat < 1.1 for all parameters
 
 ---
 _Last updated: December 2024_
