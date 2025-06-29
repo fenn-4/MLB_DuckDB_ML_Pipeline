@@ -74,6 +74,21 @@ def update_advanced_metrics(db_path='Full_DB/mlb_statcast.db', table_name='statc
         WHERE estimated_iso_using_speedangle IS NOT NULL AND HA_factor IS NOT NULL
     """)
     
+    # Add blast column if it doesn't exist
+    print(f"Adding blast column to {table_name} if it doesn't exist...")
+    conn.execute(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS blast INTEGER")
+    
+    # Calculate blast - 1 if HA_Adj_estimated_xISO > 0.3, 0 otherwise
+    print(f"Calculating blast for {table_name}...")
+    conn.execute(f"""
+        UPDATE {table_name}
+        SET blast = CASE 
+            WHEN HA_Adj_estimated_xISO > 0.3 THEN 1
+            ELSE 0
+        END
+        WHERE HA_Adj_estimated_xISO IS NOT NULL
+    """)
+    
     # Add is_zone column if it doesn't exist
     print(f"Adding is_zone column to {table_name} if it doesn't exist...")
     conn.execute(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS is_zone INTEGER")
@@ -109,6 +124,7 @@ def update_advanced_metrics(db_path='Full_DB/mlb_statcast.db', table_name='statc
                 WHEN 'FC' THEN 'Fastball'
                 WHEN 'SL' THEN 'Breaking Ball'
                 WHEN 'ST' THEN 'Breaking Ball'
+                WHEN 'SV' THEN 'Breaking Ball'
                 WHEN 'CU' THEN 'Breaking Ball'
                 WHEN 'KC' THEN 'Breaking Ball'
                 WHEN 'CS' THEN 'Breaking Ball'
@@ -131,12 +147,13 @@ def update_advanced_metrics(db_path='Full_DB/mlb_statcast.db', table_name='statc
                 WHEN 'FC' THEN 'Cutter'
                 WHEN 'SL' THEN 'Slider'
                 WHEN 'ST' THEN 'Slider'
+                WHEN 'SV' THEN 'Curveball'
                 WHEN 'CU' THEN 'Curveball'
                 WHEN 'KC' THEN 'Curveball'
                 WHEN 'CS' THEN 'Curveball'
-                WHEN 'CH' THEN 'Off-speed'
-                WHEN 'FS' THEN 'Off-speed'
-                WHEN 'FO' THEN 'Off-speed'
+                WHEN 'CH' THEN 'Changeup'
+                WHEN 'FS' THEN 'Splitter'
+                WHEN 'FO' THEN 'Splitter'
                 WHEN 'SC' THEN 'Other'
                 WHEN 'KN' THEN 'Other'
                 WHEN 'EP' THEN 'Other'
@@ -156,4 +173,11 @@ def update_advanced_metrics(db_path='Full_DB/mlb_statcast.db', table_name='statc
     print(f"Advanced metrics updated successfully for {table_name}")
 
 if __name__ == "__main__":
-    update_advanced_metrics() 
+    # Update both major and minor league tables
+    print("Updating major league table...")
+    update_advanced_metrics('Full_DB/mlb_statcast.db', 'statcast_major')
+    
+    print("\nUpdating minor league table...")
+    update_advanced_metrics('Full_DB/mlb_statcast.db', 'statcast_minor')
+    
+    print("\nBoth tables updated successfully!") 

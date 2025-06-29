@@ -88,6 +88,7 @@ This project collects, processes, and stores MLB and Triple-A Statcast data in a
 - intercept_ball_minus_batter_pos_y_inches DOUBLE
 - HA_factor DOUBLE (Hitting Approach factor calculated from phi)
 - HA_Adj_estimated_xISO DOUBLE (HA-adjusted estimated ISO)
+- blast INTEGER (Power indicator: 1 if HA_Adj_estimated_xISO > 0.3, 0 otherwise)
 - is_zone INTEGER (Strike zone indicator: 1=in-zone, 0=out-of-zone)
 - pitch_bucket VARCHAR (Pitch category: Fastball, Breaking Ball, Off-speed, Other)
 - pitch_subtype VARCHAR (Specific pitch type: Fastball, Slider, Sinker, Curveball, Cutter, Off-speed, Other)
@@ -151,10 +152,15 @@ MLB_duckDB_ML_Pipeline/
 ├── clustered_whiff_model.py        # Clustered batter whiff prediction model
 ├── clustered_pitcher_model.py     # Clustered pitcher whiff prediction model
 ├── combined_whiff_model.py         # Combined batter-pitcher meta-model
+├── combined_whiff_model_bernoulli.py # Basic Bernoulli model for whiff prediction
+├── combined_whiff_model_bernoulli_enhanced.py # Enhanced Bernoulli model with zone parameters and player x zone interactions
+├── combined_whiff_model_bernoulli_3way.py # 3-way interaction Bernoulli model
 ├── routinized_whiff_model.py       # Computationally-efficient hierarchical binomial whiff model
 ├── evaluate_clustered_model.py     # Evaluation script for clustered batter model
 ├── evaluate_clustered_pitcher_model.py # Evaluation script for clustered pitcher model
 ├── test_whiff_model.py             # Test suite for the Bayesian whiff model
+├── test_bernoulli_model_metrics.py # Test script for basic Bernoulli model with Brier score, log loss, and AUC
+├── test_bernoulli_enhanced_model_metrics.py # Test script for enhanced Bernoulli model with comprehensive metrics
 
 ├── Full_DB/
 │   ├── mlb_statcast.db             # Main DuckDB database file
@@ -169,6 +175,8 @@ MLB_duckDB_ML_Pipeline/
 │   ├── clustered_pitcher_whiff_model_2024_2025_artifacts.pkl  # Clustered pitcher model artifacts
 │   ├── combined_whiff_model_trace.nc                          # Combined model trace
 │   ├── combined_whiff_model_artifacts.pkl                     # Combined model artifacts
+│   ├── combined_whiff_model_bernoulli_enhanced_trace.nc       # Enhanced Bernoulli model trace
+│   ├── combined_whiff_model_bernoulli_enhanced_artifacts.pkl  # Enhanced Bernoulli model artifacts
 │   ├── routinized_whiff_model_trace.nc                        # Trace for the routinized binomial whiff model
 │   ├── routinized_whiff_model_artifacts.pkl                   # Artifacts for the routinized binomial whiff model
 │   └── whiff_model_diagnostics.png                            # Model diagnostic plots
@@ -208,6 +216,32 @@ MLB_duckDB_ML_Pipeline/
 - Model performance metrics should be updated as new results become available.
 
 ### Recent Updates
+- **December 2024**: Updated to 8-bucket whiff group configuration
+  - Enhanced Bernoulli model now uses 8-bucket configuration: Very_Low, Low, Low_Med, Medium, Med_High, High, Very_High, Extreme
+  - Provides good granularity for detailed player analysis while maintaining reasonable parameter counts
+  - Hierarchical model maintains both 3-bucket (Low, Medium, High) and 8-bucket configurations for flexibility
+  - Standardized bucket configurations across all models for consistency
+
+- **December 2024**: Updated to 10-bucket (decile) whiff group configuration for high granularity
+  - Enhanced Bernoulli model now uses 10-bucket configuration: Decile_1 through Decile_10
+  - Provides maximum granularity for detailed player analysis while maintaining reasonable parameter counts
+  - Hierarchical model maintains both 3-bucket (Low, Medium, High) and 8-bucket configurations for flexibility
+  - Added show_10_bucket_breakdown.py script for detailed decile analysis
+
+- **December 2024**: Added blast column to Statcast tables
+  - Added calculated column `blast` to both `statcast_major` and `statcast_minor` tables
+  - `blast` = 1 if `HA_Adj_estimated_xISO` > 0.3, 0 otherwise
+  - Provides binary indicator for high-power contact based on analysis showing 39.7% HR rate for ISO > 0.3
+  - Updated via `Helper_Queries/Statcast_Table_Alter.py` script
+
+- **December 2024**: Added Enhanced Bernoulli Model with Zone Parameters and Player x Zone Interactions
+  - Implemented advanced hierarchical Bernoulli model for whiff prediction with enhanced features
+  - Includes zone parameters (in-zone vs out-of-zone) and specific zone number effects (zones 1-9, 11-14)
+  - Models player x zone interactions for both batters and pitchers
+  - Incorporates league-level zone x pitch type interactions
+  - Trained on 2024-2025 data with comprehensive test suite including Brier score, log loss, and AUC metrics
+  - Provides detailed diagnostics by pitch type and zone location
+
 - **December 2024**: Added Routinized Hierarchical Binomial Whiff Model
   - Implemented a computationally efficient and stable "workhorse" model for whiff prediction.
   - Uses a Binomial likelihood on data aggregated by `(batter, pitcher, p_throws, pitch_subtype, is_zone)`.
